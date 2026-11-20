@@ -5,7 +5,7 @@ import { Color, type ColorRepresentation, type Group, PlaneGeometry } from 'thre
 import { GLASS_ORDER } from './GlassButton'
 import { useFeel } from './feel'
 import { createCapGeometry, SHAPES } from './geometry'
-import { createLabelTexture, type LabelText } from './icons'
+import { createLabelTexture, labelKey, type LabelText } from './icons'
 import { createGlassMaterials, createGlassState, createLabelMaterial } from './material'
 
 export interface GlassSwitchProps extends Omit<ThreeElements['group'], 'id'> {
@@ -47,6 +47,8 @@ export const GlassSwitch = ({ id, on, size = 0.07, label, labelWidth = 0.17, tin
     onPress,
   })
   const slider = useRef<Group>(null)
+  // ラベルは、渡された物そのものではなく、描く文字で比べる（その場に書いた { ja, en, zh } でも、文字が同じなら作り直さない）
+  const labelId = labelKey(label)
 
   const parts = useMemo(() => {
     // つまみは溝とは別の明るさで光る（入でも白っぽいまま、色は溝が受け持つ）
@@ -61,12 +63,14 @@ export const GlassSwitch = ({ id, on, size = 0.07, label, labelWidth = 0.17, tin
       knobGlass: createGlassMaterials(knobState),
       knobState,
       caption: caption && {
+        texture: caption.texture,
         material: createLabelMaterial(caption.texture, state),
         plane: new PlaneGeometry(labelWidth, labelWidth / caption.aspect),
         y: -(track.height / 2 + 0.014 + labelWidth / caption.aspect / 2),
       },
     }
-  }, [track, knob, state, label, labelWidth])
+    // label は、中身を表す labelId で比べる
+  }, [track, knob, state, labelId, labelWidth])
 
   useEffect(
     () => () => {
@@ -76,6 +80,7 @@ export const GlassSwitch = ({ id, on, size = 0.07, label, labelWidth = 0.17, tin
       parts.knobGeometry.dispose()
       parts.knobGlass.front.dispose()
       parts.knobGlass.back.dispose()
+      parts.caption?.texture.dispose()
       parts.caption?.material.dispose()
       parts.caption?.plane.dispose()
     },

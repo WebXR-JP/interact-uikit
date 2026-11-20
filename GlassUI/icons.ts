@@ -5,6 +5,9 @@ import { CanvasTexture, LinearFilter, LinearMipmapLinearFilter, NoColorSpace, ty
  * （部品のフォルダーだけを別のワールドへ持っていっても、そのまま動くように）。
  *
  * テクスチャの r に形、g にそのまわりのにじみ（入のときに光る分）を入れる。色はシェーダーが付ける。
+ *
+ * ラベルと自作のアイコンは、その場に書いたもの（{ ja, en, zh } や (ctx) => …）が渡されることが多い。
+ * それらは描き直しのたびに別の物になるので、部品は labelKey / iconKey で「中身」を比べて、作り直すかどうかを決める。
  */
 
 /** アイコンを描く関数。24 × 24 の枠の中に、線（stroke）と塗り（fill）で描く。色と線の太さは設定済み */
@@ -135,8 +138,14 @@ const FONT = '"Noto Sans JP", "Hiragino Sans", "Hiragino Kaku Gothic ProN", "Yu 
 const splitLabel = (label: LabelText) =>
   typeof label === 'string' ? { main: label, sub: '' } : { main: label.ja, sub: [label.en, label.zh].filter(Boolean).join('  ·  ') }
 
-function createCanvas(width: number, height: number) {
-  const canvas = document.createElement('canvas')
+/**
+ * ラベルの中身を表す文字列。描く文字が同じなら、同じ値になる（ラベルが無ければ空の文字列）。
+ * その場に書いた { ja, en, zh } は描き直しのたびに別のオブジェクトになるので、作り直すかどうかは、この値で比べる
+ */
+export const labelKey = (label: LabelText | undefined) => (label ? JSON.stringify(splitLabel(label)) : '')
+
+/** canvas を渡すと、新しく作らずにそれへ描く（大きさを入れ直すと、絵も設定も最初の状態に戻る） */
+function createCanvas(width: number, height: number, canvas = document.createElement('canvas')) {
   canvas.width = width
   canvas.height = height
   const ctx = canvas.getContext('2d')
@@ -182,25 +191,76 @@ function paintIcon(ctx: CanvasRenderingContext2D, painter: IconPainter, x: numbe
   ctx.restore()
 }
 
-const iconCache = new Map<IconPainter, Texture>()
+/** アイコン 1 つを、正方形の canvas に描く */
+function drawIcon(painter: IconPainter, size: number, canvas?: HTMLCanvasElement) {
+  const made = createCanvas(size, size, canvas)
+  // にじみが端で切れないよう、まわりに余白を取る
+  paintIcon(made.ctx, painter, size * 0.14, size * 0.14, size * 0.72)
+  return made.canvas
+}
 
-/** アイコン 1 つのテクスチャ（正方形）。同じアイコンは使い回す */
-export function createIconTexture(icon: IconName | IconPainter): Texture {
-  const painter = typeof icon === 'function' ? icon : ICONS[icon]
-  let texture = iconCache.get(painter)
+/** 用意してあるアイコンのテクスチャ。名前ごとに 1 枚だけ作って、全部の部品で使い回す */
+const iconCache = new Map<IconName, Texture>()
+
+/**
+ * アイコン 1 つのテクスチャ（正方形）。
+ *   用意してあるアイコン（名前）  1 枚を使い回す（shared = true）。片づけない
+ *   自作の関数                    呼ぶたびに作る（shared = false）。使い終わったら、呼んだ側で dispose する
+ * 自作のぶんをここに溜めないのは、その場に書いた関数が描き直しのたびに別の物になり、際限なく増えるため。
+ */
+export function createIconTexture(icon: IconName | IconPainter): { texture: Texture; shared: boolean } {
+  if (typeof icon === 'function') return { texture: toTexture(drawIcon(icon, 256)), shared: false }
+  let texture = iconCache.get(icon)
   if (!texture) {
-    const size = 256
-    const { canvas, ctx } = createCanvas(size, size)
-    // にじみが端で切れないよう、まわりに余白を取る
-    paintIcon(ctx, painter, size * 0.14, size * 0.14, size * 0.72)
-    texture = toTexture(canvas)
-    iconCache.set(painter, texture)
+    texture = toTexture(drawIcon(ICONS[icon], 256))
+    iconCache.set(icon, texture)
   }
-  return texture
+  return { texture, shared: true }
 }
 
 /** アイコンのテクスチャの中で、絵（24 × 24 の枠）が占める割合 */
 export const ICON_INNER = 0.72
+
+/** 自作のアイコンを見分けるために小さく描く絵の一辺（px） */
+const SKETCH = 48
+let sketchpad: HTMLCanvasElement | undefined
+
+/** アイコンを小さく描いて、その絵を文字列にする。同じ絵を描く関数からは、同じ文字列ができる */
+function sketch(painter: IconPainter) {
+  if (!sketchpad) {
+    sketchpad = document.createElement('canvas')
+    // 描くたびに読み戻すので、読み戻しの速い作りにしておく（最初の getContext で決まる。何倍も速い）
+    sketchpad.getContext('2d', { willReadFrequently: true })
+  }
+  return drawIcon(painter, SKETCH, sketchpad).toDataURL()
+}
+
+/**
+ * 描いた絵を読み戻して、見比べられるか（最初に使うときに 1 度だけ確かめる）。
+ * 指紋を取られないように、読み戻す絵を乱したり白紙にしたりするブラウザーがあり、そこでは絵で見分けられない。
+ */
+let comparable: boolean | undefined
+const painterKeys = new WeakMap<IconPainter, string>()
+let painters = 0
+
+/**
+ * アイコンの中身を表す文字列。中身が同じなら、同じ値になる（アイコンが無ければ空の文字列）。
+ *   用意してあるアイコン  名前
+ *   自作の関数            描いた絵。その場に書いた (ctx) => … は描き直しのたびに別の関数になるが、描く絵が同じなら同じ値になる
+ *                         （関数の外の値で絵を変えているときは、絵が変わったときに値も変わる）
+ * 同じ関数は 1 度しか描かない。絵を見比べられないブラウザーでは、関数そのものを見分ける
+ * （その場に書いた関数は、描き直しのたびに別の物として扱うことになる）。
+ */
+export function iconKey(icon: IconName | IconPainter | undefined) {
+  if (typeof icon !== 'function') return icon ?? ''
+  let key = painterKeys.get(icon)
+  if (key === undefined) {
+    if (comparable === undefined) comparable = sketch(ICONS.play) === sketch(ICONS.play) && sketch(ICONS.play) !== sketch(ICONS.stop)
+    key = comparable ? sketch(icon) : `painter ${++painters}`
+    painterKeys.set(icon, key)
+  }
+  return key
+}
 
 /** 部品の下や横に添えるラベル。戻り値の aspect は横 ÷ 縦 */
 export function createLabelTexture(label: LabelText, align: 'center' | 'left' = 'center') {

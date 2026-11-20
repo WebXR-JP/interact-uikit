@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { BufferGeometry, type ColorRepresentation, Float32BufferAttribute, PlaneGeometry, SRGBColorSpace, type Texture, TextureLoader } from 'three'
 import { useFeel } from './feel'
 import { createCapGeometry, SHAPES, type ShapeName } from './geometry'
-import { createIconTexture, createLabelTexture, createPillFaceTexture, type IconName, type IconPainter, type LabelText } from './icons'
+import { createIconTexture, createLabelTexture, createPillFaceTexture, iconKey, type IconName, type IconPainter, labelKey, type LabelText } from './icons'
 import { createFaceMaterial, createGlassMaterials, createLabelMaterial, createSparkMaterial } from './material'
 
 /** 描く順番の基準。ガラスは半透明なので、ワールドのほかの物より後に、裏 → 中身 → 表の順で描く */
@@ -111,19 +111,32 @@ export const GlassButton = ({
     progress,
   })
 
+  // ラベルと自作のアイコンは、渡された物そのものではなく、中身（描く文字・描く絵）で比べる。
+  // その場に書いた { ja, en, zh } や (ctx) => … は描き直しのたびに別の物になるが、中身が同じなら作り直さない
+  const labelId = labelKey(label)
+  const iconId = iconKey(icon)
+
   const parts = useMemo(() => {
     const aspect = cap.width / cap.height
     const glass = createGlassMaterials(state)
+    // この部品のために描いたテクスチャ。部品を作り直すときと外すときに片づける
+    // （渡された画像は使う側の物、用意してあるアイコンの絵は使い回しなので、ここには入れない）
+    const drawn: Texture[] = []
     // 中の絵: 画像 → カプセルの「アイコン＋ラベル」→ アイコンだけ、の順で決める
     let face = null
     if (picture) {
       face = createFaceMaterial(state, picture, { face: 1, spread: SPREAD, mode: 'image', radius: cap.radius / (cap.height / 2), aspect })
     } else if (shape === 'pill' && label) {
-      face = createFaceMaterial(state, createPillFaceTexture(icon ?? null, label, aspect), { face: 1, spread: SPREAD, mode: 'wide', radius: 1, aspect })
+      const texture = createPillFaceTexture(icon ?? null, label, aspect)
+      drawn.push(texture)
+      face = createFaceMaterial(state, texture, { face: 1, spread: SPREAD, mode: 'wide', radius: 1, aspect })
     } else if (icon) {
-      face = createFaceMaterial(state, createIconTexture(icon), { face: ICON_SCALE, spread: SPREAD, mode: 'icon', radius: 1, aspect })
+      const { texture, shared } = createIconTexture(icon)
+      if (!shared) drawn.push(texture)
+      face = createFaceMaterial(state, texture, { face: ICON_SCALE, spread: SPREAD, mode: 'icon', radius: 1, aspect })
     }
     const caption = label && shape !== 'pill' ? createLabelTexture(label) : null
+    if (caption) drawn.push(caption.texture)
     const spark = new BufferGeometry()
     const around: number[] = []
     const seeds: number[] = []
@@ -146,8 +159,10 @@ export const GlassButton = ({
       },
       spark,
       sparkMaterial: createSparkMaterial(state),
+      drawn,
     }
-  }, [cap, state, picture, shape, icon, label, labelWidth])
+    // icon と label は、中身を表す iconId と labelId で比べる
+  }, [cap, state, picture, shape, iconId, labelId, labelWidth])
 
   useEffect(
     () => () => {
@@ -160,6 +175,7 @@ export const GlassButton = ({
       parts.caption?.plane.dispose()
       parts.spark.dispose()
       parts.sparkMaterial.dispose()
+      for (const texture of parts.drawn) texture.dispose()
     },
     [parts],
   )
