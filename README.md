@@ -4,17 +4,18 @@ XRift のワールド内に設置する、インタラクト用 3D UI コンポ�
 
 ![展望台の手すりに設置したガラス製の操作パネル](docs/console.jpg)
 
-現在は **GlassUI**（透明感のあるガラス製のボタン・スイッチ・ベースプレート）を収録しています。フォルダを 1 つコピーするだけで導入できます。
+現在は **GlassUI**（透明感のあるガラス製のボタン・スイッチ・スライダー・ベースプレート）を収録しています。フォルダを 1 つコピーするだけで導入できます。
 
 - 画面上に重ねる 2D の Web UI（HTML オーバーレイ）ではなく、3D 空間内に実体として配置するオブジェクトです
 - クリック判定には XRift 標準の `Interactable` をそのまま使用しつつ、押し込みアニメーション・波紋・効果音・振動（ハプティクス）のフィードバックを追加しています
+- スライダーは、溝の両端の − ＋ ボタンで値を動かします（値の位置まで溝が光ります。スライダーは XRift 本番環境ではまだ試していません）
 - 外部の画像・音声・フォントファイルは不要です（アイコンや文字は動的に描画し、効果音はリアルタイムに合成します）
 - ラベルは日本語・英語・中国語の 3 言語を併記できます
 - XRift 本番環境での動作を確認済みです
 
 ![押すと沈み込み、波紋が広がり、スイッチのつまみがスライドするアニメーション](docs/press.webp)
 
-> **English** — In-world controls for [XRift](https://xrift.net) worlds (React Three Fiber): clear glass buttons, a switch, a grabbable
+> **English** — In-world controls for [XRift](https://xrift.net) worlds (React Three Fiber): clear glass buttons, a switch, a
 > slider and a mounting plate, pressed through XRift's `Interactable`. No HTML overlay and no asset files. There is no npm package: copy the
 > `GlassUI` folder into `src/components/` of your world. A short guide in English is [at the end](#english-summary).
 

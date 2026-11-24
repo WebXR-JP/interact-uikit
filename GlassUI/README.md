@@ -20,7 +20,7 @@ XRift のワールド内に設置できる、透明感のあるガラス風の�
 ## 使い方
 
 ```tsx
-import { GlassButton, GlassSwitch, setGlassEnvironment } from './components/GlassUI'
+import { GlassButton, GlassSlider, GlassSwitch, setGlassEnvironment } from './components/GlassUI'
 
 // ON / OFF を切り替えるトグルボタン（状態は親側で管理。全員で同期する場合は useInstanceState を使用）
 <GlassButton
@@ -43,7 +43,7 @@ import { GlassButton, GlassSwitch, setGlassEnvironment } from './components/Glas
 // ノブがスライドするトグルスイッチ
 <GlassSwitch id="lamp" on={lamp} onPress={() => setLamp(!lamp)} label={{ ja: '明かり', en: 'Light', zh: '灯光' }} />
 
-// 掴んで動かすスライダー（値は 0〜1。自分だけの音量なら useState、全員で共有したければ useInstanceState に）
+// − ＋ ボタンで値を動かすスライダー（値は 0〜1。自分だけの音量なら useState、インスタンス全体で共有するなら useInstanceState で管理）
 <GlassSlider id="bgm-volume" value={volume} onChange={setVolume} label={{ ja: 'BGM の大きさ', en: 'Music volume', zh: '音乐音量' }} />
 ```
 
@@ -67,6 +67,7 @@ import { GlassButton, GlassSwitch, setGlassEnvironment } from './components/Glas
 | `GlassButton`（`shape="pill"`） | 横長のカプセル型。内部にアイコンとラベルを横並び表示 | 「次へ」など、テキストで明確に示したい操作 |
 | `GlassButton`（`shape="tile"`） | 角丸の正方形。表面全体に画像を表示 | 画像や動画の選択、サムネイル表示 |
 | `GlassSwitch` | 溝に沿ってノブがスライドするスイッチ | 汎用的な ON / OFF 切り替え |
+| `GlassSlider` | 細い溝の両端に − ＋ ボタンが付いたスライダー。値の位置まで溝が光る（ノブなし） | 音量・明るさ・速度など、`0`〜`1` の値の調整 |
 | `GlassPlate` | 薄いガラスのベースパネル（クリック判定なし） | 複数のボタンをまとめて配置する台座 |
 
 ### `GlassButton` の主な Props
@@ -84,6 +85,7 @@ import { GlassButton, GlassSwitch, setGlassEnvironment } from './components/Glas
 | `onPress` / `hint` / `enabled` / `sound` | クリック時のコールバック / ホバー時の説明文 / 有効・無効の切り替え / 効果音の有無 |
 
 - **`GlassSwitch` の Props**: `id`、`on`、`size`（溝の高さ。デフォルト `0.07` m）、`label`、`labelWidth`、`tint`、`onPress`、`hint`、`enabled`、`sound`
+- **`GlassSlider` の Props**: `id`（両端のボタンの `Interactable` の ID は `${id}-minus` / `${id}-plus`）、`value`（`0`〜`1`）、`onChange`、`length`（溝の長さ。デフォルト `0.2` m）、`size`（溝の高さ。デフォルト `0.022` m）、`label`、`labelWidth`、`tint`（溝の光の色）、`step`（1 回の操作で動く量。デフォルト `0.1`）、`hints`（− ＋ ボタンのホバー時の説明文 `{ minus, plus }`）、`enabled`、`sound`。ボタンを押すと、溝の光が値の位置までなめらかに伸び縮みし、少しのあいだ明るくなります
 - **`GlassPlate` の Props**: `width`、`height`、`title`（パネル上端に添える見出しテキスト）
 
 いずれのコンポーネントも、`position` や `rotation` など Three.js の `group` が受け取る標準の Props をそのまま渡すことができます。
@@ -91,7 +93,7 @@ import { GlassButton, GlassSwitch, setGlassEnvironment } from './components/Glas
 ### アイコンの指定と自作
 
 以下のプリセットアイコンが用意されています。
-`music` / `fireworks` / `play` / `stop` / `pause` / `video` / `image` / `power` / `sound` / `light` / `next` / `sparkle` / `check` / `info` / `pin` / `mic`
+`music` / `fireworks` / `play` / `stop` / `pause` / `video` / `image` / `power` / `sound` / `light` / `next` / `sparkle` / `check` / `minus` / `plus` / `info` / `pin` / `mic`
 
 独自のアイコンを追加したい場合は、`24 × 24` の座標系に線（`stroke`）と塗り（`fill`）で描画する関数を `icon` に渡します。
 
