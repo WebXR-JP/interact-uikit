@@ -111,6 +111,10 @@ export const ICONS = {
   },
   /** 決定 */
   check: (ctx) => line(ctx, 'M5.5 12.5 L10.2 17 L18.5 7.5'),
+  /** 減らす（スライダーの −） */
+  minus: (ctx) => line(ctx, 'M6 12 H18'),
+  /** 増やす（スライダーの ＋） */
+  plus: (ctx) => line(ctx, 'M6 12 H18 M12 6 V18'),
   /** 案内 */
   info: (ctx) => {
     dot(ctx, 12, 7, 1.25)

@@ -42,6 +42,9 @@ import { GlassButton, GlassSwitch, setGlassEnvironment } from './components/Glas
 
 // ノブがスライドするトグルスイッチ
 <GlassSwitch id="lamp" on={lamp} onPress={() => setLamp(!lamp)} label={{ ja: '明かり', en: 'Light', zh: '灯光' }} />
+
+// 掴んで動かすスライダー（値は 0〜1。自分だけの音量なら useState、全員で共有したければ useInstanceState に）
+<GlassSlider id="bgm-volume" value={volume} onChange={setVolume} label={{ ja: 'BGM の大きさ', en: 'Music volume', zh: '音乐音量' }} />
 ```
 
 各コンポーネントの正面は `+z` 方向です。配置する向きは `rotation` で調整してください（少し上向きに傾けると、見下ろした際に押しやすくなります）。

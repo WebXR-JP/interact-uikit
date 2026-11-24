@@ -14,8 +14,8 @@ XRift のワールド内に設置する、インタラクト用 3D UI コンポ�
 
 ![押すと沈み込み、波紋が広がり、スイッチのつまみがスライドするアニメーション](docs/press.webp)
 
-> **English** — In-world controls for [XRift](https://xrift.net) worlds (React Three Fiber): clear glass buttons, a switch and a
-> mounting plate, pressed through XRift's `Interactable`. No HTML overlay and no asset files. There is no npm package: copy the
+> **English** — In-world controls for [XRift](https://xrift.net) worlds (React Three Fiber): clear glass buttons, a switch, a grabbable
+> slider and a mounting plate, pressed through XRift's `Interactable`. No HTML overlay and no asset files. There is no npm package: copy the
 > `GlassUI` folder into `src/components/` of your world. A short guide in English is [at the end](#english-summary).
 
 ## 設計方針
