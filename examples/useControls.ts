@@ -2,24 +2,25 @@ import { useInstanceState, useServerClock } from '@xrift/world-components'
 import { useCallback, useEffect, useRef, useState } from 'react'
 
 /**
- * 操作盤が切り替える状態の例。ワールドの中で 1 回だけ呼び、操作盤（押す側）と演出（使う側）の両方に渡す。
+ * 操作パネルで管理するステートの実装例。
+ * ワールド内で 1 回だけ呼び出し、操作パネル（入力側）と演出コンポーネント（参照側）の両方に渡して使用する。
  *
- *   演出     全員で共有する。共有するのは「いつ始めたか」だけ。いまどこまで進んだかは、
- *            XRift の共有時計から、全員が同じように計算する（通信は押したときの 1 回だけで、
- *            あとから入った人にも、途中からそのまま同じに見える）
- *   明かり   全員で共有する（入／切だけ）
- *   次へ     全員で共有する（何番めか）
- *   BGM      自分だけ（ほかの人の耳には関係しない）
+ *   演出 (show)   : インスタンス全体で同期。同期するのは「開始時刻」のみとし、現在の進行状況は
+ *                   XRift の共有クロックをもとに各クライアント側で計算する（通信はボタンを押した瞬間の 1 回のみで、
+ *                   途中参加したプレイヤーにもズレなく同じ進行状況が再現される）。
+ *   明かり (light): インスタンス全体で同期（ON / OFF のみ）。
+ *   次へ (page)   : インスタンス全体で同期（現在のインデックス番号）。
+ *   BGM (music)   : ローカルのみ（各プレイヤー個人の設定とし、他者には影響させない）。
  *
- * 時刻は XRift の共有時計（サーバーの時刻）の秒数。端末の時計のずれに左右されない。
+ * 時刻の計算にはすべて XRift の共有クロック（サーバー時刻ベースの秒数）を使用するため、端末ごとの時計のズレに左右されない。
  */
 
-/** 演出 1 回の長さ（秒） */
+/** 演出 1 回あたりの再生時間（秒） */
 export const SHOW_LENGTH = 30
-/** 押してから演出が始まるまでの秒数（全員に知らせが届くのを待つ） */
+/** ボタンを押してから演出が開始されるまでのリードタイム（秒）。全クライアントへのステート同期遅延を吸収する */
 const SHOW_LEAD = 0.5
 
-/** 演出: 始めた時刻（共有時計の秒数） */
+/** 演出の同期ステート（startedAt は共有クロック基準の開始秒数） */
 export interface ShowState {
   playing: boolean
   startedAt: number
@@ -29,26 +30,26 @@ export function useControls() {
   const clock = useServerClock()
   const clockRef = useRef(clock)
   clockRef.current = clock
-  /** 共有の時計（秒）。関数なので、useFrame の中から描き直しなしで呼べる */
+  /** 共有サーバー時刻（秒）を取得する関数。useFrame 内から再レンダリングを発生させずに参照できる */
   const now = useCallback(() => clockRef.current.now() / 1000, [])
 
-  // 全員で共有する状態。名前（第 1 引数）は、ワールドの中で重ならないものにする
+  // インスタンス全体で共有するステート。キー名（第 1 引数）はワールド内で一意になるよう指定する
   const [show, setShow] = useInstanceState<ShowState>('panel-show', { playing: false, startedAt: 0 })
   const [light, setLight] = useInstanceState<boolean>('panel-light', false)
   const [page, setPage] = useInstanceState<number>('panel-page', 0)
-  // 自分だけの状態
+  // 自分のクライアントのみで保持するローカルステート
   const [music, setMusic] = useState(true)
 
   const toggleShow = useCallback(() => {
     const time = now()
-    // 流れている途中なら止める。止まっているか、もう終わっていれば、いまから始める
+    // 再生中なら停止し、停止中または再生終了後であれば現在時刻（＋リードタイム）から開始する
     setShow((previous) => (previous.playing && time < previous.startedAt + SHOW_LENGTH ? { playing: false, startedAt: previous.startedAt } : { playing: true, startedAt: time + SHOW_LEAD }))
   }, [now, setShow])
   const toggleLight = useCallback(() => setLight((value) => !value), [setLight])
   const next = useCallback(() => setPage((value) => value + 1), [setPage])
   const toggleMusic = useCallback(() => setMusic((value) => !value), [])
 
-  /** 演出が流れているか。終わりの時刻を過ぎたら、自動で false に戻る（共有している値は書き換えない） */
+  /** 演出が現在再生中かどうかを表すフラグ。終了時刻を過ぎたらローカルで自動的に false に戻す（共有ステート自体は書き換えない） */
   const [showOn, setShowOn] = useState(false)
   useEffect(() => {
     const update = () => setShowOn(show.playing && now() < show.startedAt + SHOW_LENGTH)
