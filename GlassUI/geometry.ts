@@ -1,28 +1,29 @@
 import { BufferGeometry, Float32BufferAttribute } from 'three'
 
 /**
- * ガラスの部品の形。角の丸い板を、表も裏もなだらかにふくらませた「磨いたガラスの小石」。
- * 丸ボタン・カプセル・タイル・スイッチのつまみは、どれもこの 1 つの作り方の寸法ちがい。
+ * ガラスパーツの基本形状パラメータ。
+ * 角丸プレートの表裏をなだらかに膨らませたドーム／ベベル形状を定義する。
+ * 丸ボタン・カプセル・タイル・スイッチのつまみ等は、すべてこの共通形状の寸法違いとして生成する。
  */
 export interface CapShape {
-  /** 幅と高さ（m） */
+  /** 幅と高さ（単位: m） */
   width: number
   height: number
-  /** 角の丸み（m）。幅・高さの半分まで（半分にすると丸やカプセルになる） */
+  /** 角丸の半径（単位: m）。最大値は幅・高さの半分（半分にすると正円やカプセル型になる） */
   radius: number
-  /** 側面の厚み（m） */
+  /** 側面の厚み（単位: m） */
   edge: number
-  /** 表のふくらみ（m）。縁から中央へ盛り上がる高さ */
+  /** 表面の膨らみ高さ（単位: m）。外縁から中央に向かって盛り上がる量 */
   bulge: number
-  /** 裏のふくらみ（m） */
+  /** 裏面の膨らみ高さ（単位: m） */
   back: number
-  /** ふくらみ方。2 で球のよう、大きいほど「縁だけ丸くて上は平ら」になる */
+  /** 膨らみの曲率指数。2 で球面に近い丸みになり、値が大きいほど「エッジ付近だけ丸く中央はフラット」な形状になる */
   roundness: number
 }
 
-/** 角 1 つを何分割するか（丸ボタンは 4 倍の角数の多角形になる） */
+/** 角丸 1 箇所あたりの分割数（丸ボタンの場合は円周全体でこの 4 倍の分割数になる） */
 const CORNER_STEPS = 14
-/** 縁から中央までの輪の数。縁の近くほど細かく取る */
+/** 外縁から中央までの同心リング分割数（曲率変化の大きい外縁付近ほど密に配置する） */
 const RINGS = 9
 
 const CORNERS: [number, number][] = [
@@ -33,11 +34,11 @@ const CORNERS: [number, number][] = [
 ]
 
 /**
- * 形を作る。原点は中心、表は +z。
- *   position  頂点
- *   normal    面の向き
- *   uv        幅・高さいっぱいを 0〜1 にしたもの
- *   inset     縁から内側へどれだけ入ったか（0 = 縁, 1 = 中央）
+ * ガラスパーツのジオメトリを生成する。原点は中心、表面は +z 方向。
+ *   position : 頂点座標
+ *   normal   : 法線ベクトル
+ *   uv       : 幅・高さ全体を 0〜1 に正規化した UV 座標
+ *   inset    : 外縁から中央への進行度（0 = 外縁, 1 = 中央）
  */
 export function createCapGeometry(shape: CapShape): BufferGeometry {
   const halfW = shape.width / 2
@@ -52,7 +53,7 @@ export function createCapGeometry(shape: CapShape): BufferGeometry {
   const insets: number[] = []
   const indices: number[] = []
 
-  /** 縁から s（m）だけ内側の輪を 1 周ぶん足す。高さ z、面の傾き slope（0 = 真横向き, 無限大 = 真上向き） */
+  /** 外縁から距離 s（m）だけ内側の頂点リングを 1 周分追加する。z は高さ、slope は法線の傾き（0 = 真横向き, Infinity = 正面向き） */
   const addRing = (s: number, z: number, slope: number, facing: number, inset: number) => {
     for (const [c, [sx, sy]] of CORNERS.entries()) {
       for (let i = 0; i <= CORNER_STEPS; i++) {
@@ -60,11 +61,11 @@ export function createCapGeometry(shape: CapShape): BufferGeometry {
         const nx = Math.cos(angle)
         const ny = Math.sin(angle)
         const r = radius - s
-        // 丸みより内側まで入ると、角は尖る（そこはもう平らなので見分けはつかない）
+        // 角丸の半径より内側に入った領域では角が収束する（中央付近のフラットな面になるため見た目上の影響はない）
         const x = r > 0 ? sx * (halfW - radius) + nx * r : sx * Math.max(halfW - s, 0)
         const y = r > 0 ? sy * (halfH - radius) + ny * r : sy * Math.max(halfH - s, 0)
         positions.push(x, y, z)
-        // 面の向き: 外向き（輪の法線）と前後の向きを、傾きで混ぜる
+        // 法線ベクトル: 外向きの水平法線と前後方向（±z）を傾き（slope）に応じて合成する
         const length = Math.hypot(1, slope)
         normals.push(nx / length, ny / length, (facing * slope) / length)
         uvs.push(x / shape.width + 0.5, y / shape.height + 0.5)
@@ -75,8 +76,8 @@ export function createCapGeometry(shape: CapShape): BufferGeometry {
   }
 
   /**
-   * 2 つの輪を帯でつなぐ。輪は +z から見て反時計回りに並んでいる。
-   * inward: a から b へ行くと輪の内側（または +z 側）へ進むとき true（面の表が外・+z を向く）
+   * 隣接する 2 つの頂点リング間を三角形メッシュで接続する（各リングの頂点は +z 側から見て反時計回り）。
+   * inward: リング a から b へ向かって内側（または +z 方向）に進む場合は true（表面が外側・+z 側を向くようインデックスを組む）
    */
   const bridge = (a: number, b: number, inward: boolean) => {
     for (let j = 0; j < perRing; j++) {
@@ -86,7 +87,7 @@ export function createCapGeometry(shape: CapShape): BufferGeometry {
     }
   }
 
-  // ふくらみの形: 縁では垂直に立ち上がり、中央で平らになる（超楕円の 4 分の 1）
+  // 断面のプロファイル曲線: 外縁で垂直に立ち上がり、中央に向かって滑らかに水平へ近づく（超楕円の 1/4 曲線）
   const p = Math.max(shape.roundness, 1.2)
   const lift = (x: number) => (1 - (1 - x) ** p) ** (1 / p)
   const steep = (x: number) => (x <= 0 ? Infinity : (1 - (1 - x) ** p) ** (1 / p - 1) * (1 - x) ** (p - 1))
@@ -98,16 +99,16 @@ export function createCapGeometry(shape: CapShape): BufferGeometry {
     for (let k = 0; k <= RINGS; k++) {
       const x = (k / RINGS) ** 2.2
       const dzds = (height * steep(x)) / deepest
-      // 傾きの逆数（真横向き = 0）。縁では 0、中央では無限大になる
+      // 接線の傾きの逆数（真横向き = 0）。外縁では 0、中央では非常に大きな値（ほぼ正面向き）になる
       const slope = dzds === Infinity ? 0 : dzds <= 1e-6 ? 1e6 : 1 / dzds
       const ring = addRing(x * deepest, rim + facing * height * lift(x), slope, facing, x)
-      // 表は縁から中央へ進むほど +z 側、裏は -z 側（裏は逆向きに張って、面の表を -z に向ける）
+      // 表面は外縁から中央へ進むほど +z 側、裏面は -z 側へ膨らむ（裏面は面の向きを反転させて法線を -z 側に向ける）
       if (previous >= 0) bridge(previous, ring, facing > 0)
       previous = ring
     }
   }
 
-  // 側面: 裏の縁と表の縁をつなぐ
+  // 側面: 裏面と表面の外縁リング同士を接続する
   if (shape.edge > 0) {
     const top = addRing(0, shape.edge / 2, 0, 1, 0)
     const bottom = addRing(0, -shape.edge / 2, 0, 1, 0)
@@ -124,19 +125,19 @@ export function createCapGeometry(shape: CapShape): BufferGeometry {
   return geometry
 }
 
-/** 部品の形の決まり。size は丸とタイルなら差し渡し、カプセルなら高さ（m） */
+/** 各 UI パーツの形状プリセット。size は丸ボタン・タイルでは直径／一辺の長さ、カプセルでは高さ（単位: m）を表す */
 export const SHAPES = {
-  /** 丸ボタン: レンズのようにふくらんだ円 */
+  /** 丸ボタン: レンズ状に膨らんだ円形 */
   round: (size: number): CapShape => ({ width: size, height: size, radius: size / 2, edge: size * 0.05, bulge: size * 0.13, back: size * 0.05, roundness: 2.3 }),
-  /** カプセル: アイコンとラベルを横に並べる横長のボタン */
+  /** カプセル型: アイコンとラベルを横に並べやすい横長ボタン */
   pill: (size: number, width = size * 2.7): CapShape => ({ width, height: size, radius: size / 2, edge: size * 0.06, bulge: size * 0.14, back: size * 0.05, roundness: 2.6 }),
-  /** タイル: 画像を載せる角丸の四角 */
+  /** タイル型: 画像などを載せやすい角丸の四角形ボタン */
   tile: (size: number, width = size): CapShape => ({ width, height: size, radius: size * 0.2, edge: size * 0.05, bulge: size * 0.07, back: size * 0.03, roundness: 5 }),
-  /** スイッチの溝（つまみが動くレール） */
+  /** スイッチのトラック（つまみがスライドするレール部分） */
   track: (size: number): CapShape => ({ width: size * 1.9, height: size, radius: size / 2, edge: size * 0.05, bulge: size * 0.06, back: size * 0.04, roundness: 3.2 }),
-  /** スイッチのつまみ */
+  /** スイッチのつまみ（ノブ） */
   knob: (size: number): CapShape => ({ width: size * 0.82, height: size * 0.82, radius: size * 0.41, edge: size * 0.05, bulge: size * 0.2, back: size * 0.05, roundness: 2.1 }),
-  /** 台: 部品を並べて載せる薄いガラスの板 */
+  /** ベースプレート: 各パーツを並べて配置する薄いガラス板 */
   plate: (width: number, height: number): CapShape => ({ width, height, radius: Math.min(width, height) * 0.22, edge: 0.004, bulge: 0.004, back: 0.002, roundness: 4 }),
 }
 
