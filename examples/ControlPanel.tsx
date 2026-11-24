@@ -6,46 +6,47 @@ import { GlassButton, GlassPlate, GlassSwitch, type LabelText } from '../GlassUI
 import { type Controls, SHOW_LENGTH } from './useControls'
 
 /**
- * 操作盤の例。ワールドの中に立っている物で、XRift のインタラクト（狙って押す）で操作する。
- * 画面に重ねる Web の UI（HTML）は使わない。
+ * 自立型操作パネルのサンプル。3D 空間内に実体として配置し、XRift 標準の Interactable で操作する。
+ * 画面上に重ねる 2D の Web UI（HTML オーバーレイ）は使用しない。
  *
- * 2 本の支柱に、案内板のように傾けたガラスの板を載せ、その上に部品を 4 つ並べてある:
- *   丸ボタン（進み具合の輪つき）・丸ボタン（入／切）・スイッチ・カプセル（押すだけ）
+ * 2 本の支柱に案内板のように傾けたガラスプレートを取り付け、4 種類の UI コンポーネントを並べている:
+ *   丸ボタン（進捗リング付き）・丸ボタン（ON/OFF トグル）・トグルスイッチ・カプセル型ボタン（単発実行）
  *
- * 原点は床の高さ、板の真下。板は +z（人が立つ側）と上を向く。置く場所と向きは position と rotation で決める。
+ * 原点はプレート真下の床面。プレートは +z 方向（プレイヤーが立つ側）かつ斜め上を向く。
+ * 設置場所と向きは group の position と rotation で調整する。
  *
  *   const controls = useControls()
  *   <ControlPanel controls={controls} position={[0, 0, -2]} />
  */
 
-/** 板と支柱の寸法（m） */
+/** プレートおよび支柱の寸法（単位: m） */
 const PANEL = {
   width: 1.04,
   height: 0.36,
-  /** 床から板の中心までの高さ。立った人の胸の前あたり */
+  /** 床面からプレート中心までの高さ（立った状態の胸元あたり） */
   lift: 1.05,
-  /** 板を寝かせる角度（ラジアン。0 で垂直、大きいほど上を向く）。見下ろしたときに押しやすい */
+  /** プレートを手前に傾ける角度（ラジアン。0 で垂直、値が大きいほど上を向く）。見下ろした際に押しやすくする */
   tilt: 0.85,
-  /** 部品どうしの間隔と、板の面から部品を浮かせる高さ */
+  /** 各ボタン間の水平間隔と、プレート表面から浮かせる高さ */
   gap: 0.225,
   raise: 0.026,
-  /** 部品の中心の高さ（板の中心から。下にラベルが出るので、少し上に寄せる） */
+  /** ボタン中心の Y 座標オフセット（下部にラベルが表示されるため、プレート中心より少し上に配置する） */
   row: 0.03,
-  /** 支柱の位置（板の中心から左右へ）と太さ。支柱は板の両端に寄せる（ガラス越しに、部品やラベルの後ろを横切らないように） */
+  /** 支柱の X 座標オフセット（中心から左右への距離）と太さ。ガラス越しにボタンやラベルと重ならないよう両端に寄せる */
   post: 0.475,
   thickness: 0.028,
 }
 
 /**
- * 体が操作盤に入り込まないようにする当たり判定の箱（床から top の高さまで）。
+ * アバターが操作パネルにめり込まないようにするためのコライダー寸法（床面から top の高さまで）。
  *
- * 箱は部品より低くして、部品を箱の中に入れない。部品ごと包む背の高い箱にすると、
- * XRift 本番ではどの部品も押せなくなった（開発用の環境では押せていた）。
- * 目から部品への線は、どこに立ってもこの箱の上を通る。
+ * コライダーはボタンより低い位置までに留め、ボタン自体を覆わないようにする。
+ * ボタンごと覆う高さのコライダーにすると、開発環境では押せても XRift 本番環境では一切押せなくなるため注意。
+ * 視点からボタンへの射線が、どの立ち位置からでもこのコライダーの上を通るようにしている。
  */
 const GUARD = { top: 0.75, depth: 0.36, margin: 0.07 }
 
-/** ラベルは部品の外で決めておく（描き直しのたびに新しい物を渡すと、そのたびに文字の絵を作り直すことになる） */
+/** ラベルはコンポーネント外で定数として定義する（再レンダリングのたびに新しいオブジェクトを渡すと、ラベル用テクスチャが再生成されてしまうため） */
 const LABELS = {
   show: { ja: '演出', en: 'Show', zh: '演出' },
   music: { ja: 'BGM', en: 'Music', zh: '音乐' },
@@ -56,7 +57,7 @@ const LABELS = {
 export interface ControlPanelProps extends Omit<ThreeElements['group'], 'children'> {
   /** useControls() の戻り値 */
   controls: Controls
-  /** 支柱の素材。省くと淡い色の標準マテリアル（ワールドの手すりなどと同じ物を渡すと、なじむ） */
+  /** 支柱のマテリアル。省略時は淡いグレーの標準マテリアル（ワールド内の手すり等と同じマテリアルを渡すと周囲に馴染む） */
   postMaterial?: Material
 }
 
@@ -80,7 +81,7 @@ export const ControlPanel = ({ controls, postMaterial, ...group }: ControlPanelP
   const material = postMaterial ?? stand.material
 
   const { show, showOn, light, music, now } = controls
-  /** 部品の横の位置（左から 0, 1, 2, 3 番め） */
+  /** 各ボタンの X 座標を計算（左から index = 0, 1, 2, 3） */
   const column = (index: number) => (index - 1.5) * PANEL.gap
 
   return (
@@ -89,12 +90,12 @@ export const ControlPanel = ({ controls, postMaterial, ...group }: ControlPanelP
         <mesh key={side} geometry={stand.post} material={material} position={[side * PANEL.post, PANEL.lift / 2, 0]} />
       ))}
       <GlassPlate width={PANEL.width} height={PANEL.height} position={[0, PANEL.lift + 0.012, 0]} rotation={[-PANEL.tilt, 0, 0]}>
-        {/* 板を裏から受ける腕 */}
+        {/* プレートを背面から支えるアーム */}
         {[-1, 1].map((side) => (
           <mesh key={side} geometry={stand.arm} material={material} position={[side * PANEL.post, -0.02, -0.02]} />
         ))}
 
-        {/* 時間で進むもの: 共有するのは「始めた時刻」だけ。縁の輪は、その時刻と共有時計から毎フレーム計算する */}
+        {/* 時間経過を伴う演出: 同期するのは「開始時刻」のみ。外周の進捗リングは開始時刻と共有クロックから毎フレーム算出する */}
         <GlassButton
           id="panel-show"
           position={[column(0), PANEL.row, PANEL.raise]}
@@ -106,7 +107,7 @@ export const ControlPanel = ({ controls, postMaterial, ...group }: ControlPanelP
           onPress={controls.toggleShow}
           hint={showOn ? '演出を止める · Stop the show · 停止演出' : '演出を始める · Start the show · 开始演出'}
         />
-        {/* 入／切（自分だけ） */}
+        {/* ON / OFF トグル（ローカルのみ） */}
         <GlassButton
           id="panel-music"
           position={[column(1), PANEL.row, PANEL.raise]}
@@ -117,7 +118,7 @@ export const ControlPanel = ({ controls, postMaterial, ...group }: ControlPanelP
           onPress={controls.toggleMusic}
           hint={music ? 'BGM を切る · Music off · 关闭音乐' : 'BGM を入れる · Music on · 打开音乐'}
         />
-        {/* 入／切（全員で共有）。スイッチは丸ボタンより背が低いので、ラベルの高さが揃うように少し下げる */}
+        {/* ON / OFF トグル（インスタンス全体で共有）。スイッチは丸ボタンより縦幅が小さいため、ラベル位置が揃うよう少し下げる */}
         <GlassSwitch
           id="panel-light"
           position={[column(2), PANEL.row - 0.015, PANEL.raise]}
@@ -127,7 +128,7 @@ export const ControlPanel = ({ controls, postMaterial, ...group }: ControlPanelP
           onPress={controls.toggleLight}
           hint={light ? '明かりを消す · Light off · 关灯' : '明かりをつける · Light on · 开灯'}
         />
-        {/* 押すだけ（on を渡さない） */}
+        {/* 単発アクション（on を渡さないステートレスなボタン） */}
         <GlassButton
           id="panel-next"
           position={[column(3), PANEL.row, PANEL.raise]}
@@ -142,7 +143,7 @@ export const ControlPanel = ({ controls, postMaterial, ...group }: ControlPanelP
         />
       </GlassPlate>
 
-      {/* 部品より低い箱で、体だけを止める */}
+      {/* ボタンより低い位置にのみコライダーを配置し、アバターの進入だけを防ぐ */}
       <RigidBody type="fixed" colliders={false}>
         <CuboidCollider args={[PANEL.width / 2 + GUARD.margin, GUARD.top / 2, GUARD.depth / 2]} position={[0, GUARD.top / 2, 0]} />
       </RigidBody>
